@@ -6,11 +6,11 @@ It exposes the MyAnimeList public API as a set of MCP tools that any MCP-compati
 
 ## Authentication
 
-Only one secret is needed:
+No env vars or secrets needed. Pass your **MAL Client ID** as a Bearer token:
 
-| Secret             | Required | Purpose                                                                 |
-|--------------------|----------|-------------------------------------------------------------------------|
-| `MAL_CLIENT_ID`    | Yes      | API client ID, sent as the `X-MAL-CLIENT-ID` header. |
+```
+Authorization: Bearer <your_mal_client_id>
+```
 
 Register your application at <https://myanimelist.net/apiconfig> to obtain a **Client ID**.
 
@@ -22,42 +22,30 @@ npm install
 
 ### Local development
 
-Create a `.dev.vars` file (gitignored) with your client ID:
-
-```bash
-cp .dev.vars.example .dev.vars
-# edit .dev.vars with your MAL_CLIENT_ID
-```
-
-Run the dev server:
-
 ```bash
 npm run dev
 ```
 
 ### Deploy to Cloudflare Workers
 
-Set the secret on your deployed Worker:
-
-```bash
-wrangler secret put MAL_CLIENT_ID
-```
-
-Deploy:
-
 ```bash
 npm run deploy
 ```
 
+No secrets to set — the Client ID is provided per-request by the MCP client.
+
 ## Connecting an MCP client
 
-Point your MCP client at the deployed Worker URL using the Streamable HTTP transport. For example, in a client config:
+Point your MCP client at the `/mcp` route using the Streamable HTTP transport, with your MAL Client ID as the Bearer token:
 
 ```json
 {
   "mcpServers": {
     "myanimelist": {
-      "url": "https://myanimelist-mcp-server.<your-subdomain>.workers.dev/"
+      "url": "https://myanimelist-mcp-server.<your-subdomain>.workers.dev/mcp",
+      "headers": {
+        "Authorization": "Bearer <your_mal_client_id>"
+      }
     }
   }
 }
@@ -92,19 +80,13 @@ Point your MCP client at the deployed Worker URL using the Streamable HTTP trans
 | `get_forum_topic` | Get a forum topic's details and posts. |
 | `get_forum_topics` | Search forum topics. |
 
-## Architecture
-
-- **Stateless**: Each request constructs a fresh `McpServer` + handler, so the Worker scales horizontally without session affinity.
-- **Per-request env access**: The Worker's `fetch(request, env)` handler reads `MAL_CLIENT_ID` from the Cloudflare environment, so the secret is never baked into the bundle.
-- **Faithful API mapping**: One MCP tool per MyAnimeList API endpoint, with parameters matching the official API docs.
-
 ## Project structure
 
 ```
 src/
-  index.ts          Worker entry: per-request handler + server setup
+  index.ts          Worker entry: /mcp route, Bearer token auth
   mal-client.ts     MyAnimeList API client (headers, error handling)
-  types.ts          Shared types, Env interface, and enum constants
+  types.ts          Enum constants
   tools/
     anime.ts        5 anime tools
     manga.ts        4 manga tools

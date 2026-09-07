@@ -1,5 +1,3 @@
-import type { Env } from "./types.js";
-
 const MAL_API_BASE = "https://api.myanimelist.net/v2";
 
 export class MalClientError extends Error {
@@ -17,8 +15,8 @@ export class MalClientError extends Error {
 export class MalClient {
   private clientId: string;
 
-  constructor(env: Env) {
-    this.clientId = env.MAL_CLIENT_ID;
+  constructor(clientId: string) {
+    this.clientId = clientId;
   }
 
   private buildUrl(path: string, params?: Record<string, string | number | boolean | undefined>): string {

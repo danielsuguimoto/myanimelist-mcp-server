@@ -1,7 +1,3 @@
-export interface Env {
-  MAL_CLIENT_ID: string;
-}
-
 export const ANIME_RANKING_TYPES = [
   "all",
   "airing",

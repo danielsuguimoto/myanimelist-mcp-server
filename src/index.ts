@@ -1,73 +1,58 @@
-import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
+import { McpServer } from "@modelcontextprotocol/server";
+import { createMcpHandler } from "agents/mcp/server";
 import { MalClient } from "./mal-client.js";
-import type { Env } from "./types.js";
 import { registerAnimeTools } from "./tools/anime.js";
 import { registerMangaTools } from "./tools/manga.js";
 import { registerForumTools } from "./tools/forum.js";
 
-function buildServer(env: Env): McpServer {
-  const client = new MalClient(env);
+const SERVER_NAME = "myanimelist-mcp-server";
+const SERVER_VERSION = "1.0.0";
 
-  const server = new McpServer({
-    name: "myanimelist",
-    version: "1.0.0",
-  });
+const ROOT_HTML = `<!doctype html><html><head><meta charset="utf-8"><title>myanimelist-mcp-server</title><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="font:14px/1.5 system-ui,sans-serif;max-width:32rem;margin:2rem auto;padding:0 1rem;color:#1a1a1a"><h1>myanimelist-mcp-server</h1><p>MCP server for the MyAnimeList API v2. Deployed on Cloudflare Workers.</p><p>MCP endpoint: <code>/mcp</code></p><p>Pass your MAL Client ID as a Bearer token: <code>Authorization: Bearer &lt;your_client_id&gt;</code></p></body></html>`;
 
+function extractToken(request: Request): string | null {
+  const header = request.headers.get("Authorization") ?? request.headers.get("authorization");
+  if (!header) return null;
+  const match = /^Bearer\s+(.+)$/i.exec(header.trim());
+  return match ? match[1].trim() : null;
+}
+
+function createServer(clientId: string): McpServer {
+  const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
+  const client = new MalClient(clientId);
   registerAnimeTools(server, client);
   registerMangaTools(server, client);
   registerForumTools(server, client);
-
   return server;
 }
 
-function ensureAcceptHeaders(request: Request): Request {
-  const accept = request.headers.get("accept") ?? "";
-  const needsJson = !accept.includes("application/json");
-  const needsSse = !accept.includes("text/event-stream");
-  if (!needsJson && !needsSse) return request;
-
-  const parts = [
-    ...accept.split(",").map((s) => s.trim()).filter(Boolean),
-    ...(needsJson ? ["application/json"] : []),
-    ...(needsSse ? ["text/event-stream"] : []),
-  ];
-  const headers = new Headers(request.headers);
-  headers.set("accept", parts.join(", "));
-  return new Request(request, { headers });
-}
-
-function handleSseStream(): Response {
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      const interval = setInterval(() => {
-        try {
-          controller.enqueue(encoder.encode(": keep-alive\n\n"));
-        } catch {
-          clearInterval(interval);
-        }
-      }, 15000);
-    },
-  });
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
-    },
-  });
-}
-
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    if (request.method === "GET") {
-      return handleSseStream();
+  async fetch(request: Request, env: unknown, ctx: ExecutionContext): Promise<Response> {
+    const url = new URL(request.url);
+
+    if (url.pathname === "/health") {
+      return new Response(SERVER_NAME, { status: 200 });
     }
-    if (request.method === "DELETE") {
-      return new Response(null, { status: 200 });
+
+    if (url.pathname === "/") {
+      return new Response(ROOT_HTML, {
+        status: 200,
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      });
     }
-    const handler = createMcpHandler(() => buildServer(env));
-    return handler.fetch(ensureAcceptHeaders(request));
+
+    if (url.pathname !== "/mcp") {
+      return new Response("Not Found", { status: 404 });
+    }
+
+    const token = extractToken(request);
+    if (!token) {
+      return new Response(
+        JSON.stringify({ error: "missing_bearer_token", message: "Provide Authorization: Bearer <your_mal_client_id>" }),
+        { status: 401, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    return createMcpHandler(() => createServer(token))(request, env as never, ctx);
   },
-};
+} satisfies ExportedHandler;
