@@ -1,4 +1,4 @@
-import { McpServer, WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/server";
+import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
 import { MalClient } from "./mal-client.js";
 import type { Env } from "./types.js";
 import { registerAnimeTools } from "./tools/anime.js";
@@ -22,13 +22,25 @@ function buildServer(env: Env): McpServer {
   return server;
 }
 
+function ensureAcceptHeaders(request: Request): Request {
+  const accept = request.headers.get("accept") ?? "";
+  const needsJson = !accept.includes("application/json");
+  const needsSse = !accept.includes("text/event-stream");
+  if (!needsJson && !needsSse) return request;
+
+  const parts = [
+    ...accept.split(",").map((s) => s.trim()).filter(Boolean),
+    ...(needsJson ? ["application/json"] : []),
+    ...(needsSse ? ["text/event-stream"] : []),
+  ];
+  const headers = new Headers(request.headers);
+  headers.set("accept", parts.join(", "));
+  return new Request(request, { headers });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const transport = new WebStandardStreamableHTTPServerTransport({
-      sessionIdGenerator: undefined,
-    });
-    const server = buildServer(env);
-    await server.connect(transport);
-    return transport.handleRequest(request);
+    const handler = createMcpHandler(() => buildServer(env));
+    return handler.fetch(ensureAcceptHeaders(request));
   },
 };
