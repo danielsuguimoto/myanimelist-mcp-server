@@ -1,6 +1,8 @@
 export interface Env {
   MAL_CLIENT_ID: string;
+  MAL_CLIENT_SECRET?: string;
   MAL_ACCESS_TOKEN?: string;
+  MAL_REFRESH_TOKEN?: string;
 }
 
 export const ANIME_RANKING_TYPES = [

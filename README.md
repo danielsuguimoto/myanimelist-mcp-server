@@ -8,19 +8,27 @@ It exposes the MyAnimeList API as a set of MCP tools that any MCP-compatible cli
 
 The MyAnimeList API supports two authentication methods, both handled via Worker secrets:
 
-| Secret             | Required | Purpose                                                                 |
-|--------------------|----------|-------------------------------------------------------------------------|
-| `MAL_CLIENT_ID`    | Yes      | API client ID, sent as the `X-MAL-CLIENT-ID` header. Enables all public/read endpoints. |
-| `MAL_ACCESS_TOKEN` | No       | OAuth2 Bearer token (`write:users` scope). Required for user-specific endpoints (suggestions, updating/deleting list items, your own user info, `@me` lists). |
+| Secret               | Required | Purpose                                                                 |
+|----------------------|----------|-------------------------------------------------------------------------|
+| `MAL_CLIENT_ID`      | Yes      | API client ID, sent as the `X-MAL-CLIENT-ID` header. Enables all public/read endpoints. |
+| `MAL_CLIENT_SECRET`  | For OAuth | API client secret. Required for the OAuth flow and token refresh. |
+| `MAL_ACCESS_TOKEN`   | For OAuth | OAuth2 Bearer token (`write:users` scope). Required for user-specific endpoints (suggestions, updating/deleting list items, your own user info, `@me` lists). Auto-refreshes when expired. |
+| `MAL_REFRESH_TOKEN`  | For OAuth | OAuth2 refresh token. Used to automatically refresh expired access tokens (access tokens expire in 1 hour, refresh tokens last 1 month). |
 
 ### Getting credentials
 
-1. Register your application at <https://myanimelist.net/apiconfig> to obtain a **Client ID** (and Client Secret).
-2. For user-specific endpoints, complete the OAuth2 implicit flow to obtain an access token:
+1. Register your application at <https://myanimelist.net/apiconfig> to obtain a **Client ID** and **Client Secret**.
+2. Set your app's **App Redirect URL** to `http://localhost:8787/callback` (for the local OAuth helper).
+3. Add your `MAL_CLIENT_ID` and `MAL_CLIENT_SECRET` to `.dev.vars`:
+   ```bash
+   cp .dev.vars.example .dev.vars
+   # edit .dev.vars with your MAL_CLIENT_ID and MAL_CLIENT_SECRET
    ```
-   https://myanimelist.net/v1/oauth2/authorize?response_type=code&client_id=YOUR_CLIENT_ID&redirect_uri=YOUR_REDIRECT_URI
+4. Run the OAuth helper to obtain access and refresh tokens automatically:
+   ```bash
+   npm run oauth
    ```
-   See the [MyAnimeList API docs](https://myanimelist.net/apiconfig/references/api/v2) for full OAuth details.
+   This opens your browser for MyAnimeList authorization, catches the callback, exchanges the code for tokens, and saves them to `.dev.vars`.
 
 ## Setup
 
@@ -30,16 +38,10 @@ npm install
 
 ### Local development
 
-Create a `.dev.vars` file (gitignored) with your credentials:
-
 ```bash
 cp .dev.vars.example .dev.vars
-# edit .dev.vars with your MAL_CLIENT_ID and MAL_ACCESS_TOKEN
-```
-
-Run the dev server:
-
-```bash
+# edit .dev.vars with your MAL_CLIENT_ID and MAL_CLIENT_SECRET
+npm run oauth    # obtain access + refresh tokens (saved to .dev.vars)
 npm run dev
 ```
 
@@ -49,7 +51,9 @@ Set the secrets on your deployed Worker:
 
 ```bash
 wrangler secret put MAL_CLIENT_ID
+wrangler secret put MAL_CLIENT_SECRET
 wrangler secret put MAL_ACCESS_TOKEN
+wrangler secret put MAL_REFRESH_TOKEN
 ```
 
 Deploy:
@@ -57,6 +61,8 @@ Deploy:
 ```bash
 npm run deploy
 ```
+
+> **Note:** Access tokens expire in 1 hour. The Worker automatically refreshes them using the refresh token (which lasts 1 month). After a month, re-run `npm run oauth` to get fresh tokens.
 
 ## Connecting an MCP client
 
@@ -114,22 +120,25 @@ Point your MCP client at the deployed Worker URL using the Streamable HTTP trans
 
 ## Architecture
 
-- **Stateless**: Each request constructs a fresh `McpServer` + `WebStandardStreamableHTTPServerTransport` (session management disabled), so the Worker scales horizontally without session affinity.
-- **Per-request env access**: The Worker's `fetch(request, env)` handler reads `MAL_CLIENT_ID` / `MAL_ACCESS_TOKEN` from the Cloudflare environment, so secrets are never baked into the bundle.
+- **Stateless**: Each request constructs a fresh `McpServer` + handler, so the Worker scales horizontally without session affinity.
+- **Per-request env access**: The Worker's `fetch(request, env)` handler reads secrets from the Cloudflare environment, so they're never baked into the bundle.
+- **Auto-refreshing tokens**: The `MalClient` automatically refreshes expired access tokens using the refresh token, with a 60-second safety margin before expiry. If a 401 is still received, it retries with a fresh token.
 - **Faithful API mapping**: One MCP tool per MyAnimeList API endpoint, with parameters matching the official API docs.
 
 ## Project structure
 
 ```
 src/
-  index.ts          Worker entry: per-request transport + server setup
-  mal-client.ts     MyAnimeList API client (headers, error handling, form encoding)
+  index.ts          Worker entry: per-request handler + server setup
+  mal-client.ts     MyAnimeList API client (headers, error handling, token refresh)
   types.ts          Shared types, Env interface, and enum constants
   tools/
     anime.ts        8 anime tools
     manga.ts        6 manga tools
     forum.ts        3 forum tools
     user.ts         1 user tool
+scripts/
+  oauth.ts          OAuth helper: automates the PKCE flow to get tokens
 ```
 
 ## Scripts
@@ -138,4 +147,5 @@ src/
 |---------|-------------|
 | `npm run dev` | Start the local Wrangler dev server. |
 | `npm run deploy` | Deploy to Cloudflare Workers. |
+| `npm run oauth` | Run the OAuth helper to obtain access/refresh tokens. |
 | `npm run typecheck` | Run the TypeScript type checker. |
