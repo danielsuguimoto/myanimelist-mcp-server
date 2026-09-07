@@ -1,4 +1,1 @@
 MAL_CLIENT_ID=your_mal_client_id_here
-MAL_CLIENT_SECRET=your_mal_client_secret_here
-MAL_ACCESS_TOKEN=your_oauth_access_token_here
-MAL_REFRESH_TOKEN=your_oauth_refresh_token_here

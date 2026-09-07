@@ -4,7 +4,6 @@ import type { Env } from "./types.js";
 import { registerAnimeTools } from "./tools/anime.js";
 import { registerMangaTools } from "./tools/manga.js";
 import { registerForumTools } from "./tools/forum.js";
-import { registerUserTools } from "./tools/user.js";
 
 function buildServer(env: Env): McpServer {
   const client = new MalClient(env);
@@ -17,7 +16,6 @@ function buildServer(env: Env): McpServer {
   registerAnimeTools(server, client);
   registerMangaTools(server, client);
   registerForumTools(server, client);
-  registerUserTools(server, client);
 
   return server;
 }
