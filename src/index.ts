@@ -38,8 +38,37 @@ function ensureAcceptHeaders(request: Request): Request {
   return new Request(request, { headers });
 }
 
+function handleSseStream(): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const interval = setInterval(() => {
+        try {
+          controller.enqueue(encoder.encode(": keep-alive\n\n"));
+        } catch {
+          clearInterval(interval);
+        }
+      }, 15000);
+    },
+  });
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
+  });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    if (request.method === "GET") {
+      return handleSseStream();
+    }
+    if (request.method === "DELETE") {
+      return new Response(null, { status: 200 });
+    }
     const handler = createMcpHandler(() => buildServer(env));
     return handler.fetch(ensureAcceptHeaders(request));
   },
