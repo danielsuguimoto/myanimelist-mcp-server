@@ -65,7 +65,7 @@ export function registerForumTools(server: McpServer, client: MalClient): void {
         limit: z.number().int().min(1).max(100).optional().describe("Max topics to return (1-100, default 100)."),
         offset: z.number().int().min(0).optional().describe("Pagination offset (default 0)."),
         sort: z.enum(FORUM_TOPIC_SORT).optional().describe("Sort order. Currently only 'recent' is supported."),
-        q: z.string().optional().describe("Search query for topic titles."),
+        q: z.string().trim().min(1).optional().describe("Search query for topic titles."),
         topic_user_name: z.string().optional().describe("Filter topics by the topic author's user name."),
         user_name: z.string().optional().describe("Filter topics by a participating user's user name."),
       }),
