@@ -24,7 +24,7 @@ export function registerMangaTools(server: McpServer, client: MalClient): void {
       description:
         "Search the MyAnimeList manga database by keyword. Returns a paginated list of matching manga.",
       inputSchema: z.object({
-        q: z.string().describe("Search query string."),
+        q: z.string().trim().min(1).describe("Search query string."),
         limit: z.number().int().min(1).max(100).optional().describe("Max results to return (1-100, default 100)."),
         offset: z.number().int().min(0).optional().describe("Pagination offset (default 0)."),
         fields: z
